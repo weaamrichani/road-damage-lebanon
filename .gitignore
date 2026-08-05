@@ -1,0 +1,20 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pt
+
+# Node
+node_modules/
+package-lock.json
+webapp/node_modules/
+webapp/.next/
+webapp/package-lock.json
+
+# Data (too large for GitHub)
+data/datasets/
+data/raw_uploads/
+
+# Secrets
+.env.local
+webapp/.env.local
