@@ -24,12 +24,13 @@ interface Detection {
 
 async function runYoloInference(imagePath: string): Promise<Detection[]> {
   return new Promise((resolve, reject) => {
-    const modelPath = join(process.cwd(), '..', 'models', 'rdd2022_baseline', 'weights', 'best.pt');
-    const python = spawn('python', [
+    const modelPath = join(process.cwd(), '..', 'models', 'rdd2022_lebanon_finetuned', 'weights', 'best.pt');
+    const python = spawn('C:\\Users\\user\\road-damage-lebanon\\venv\\Scripts\\python.exe', [
       join(process.cwd(), '..', 'scripts', 'inference.py'),
       '--image', imagePath,
       '--model', modelPath,
       '--output-format', 'json',
+      '--conf', '0.15',
     ]);
 
     let output = '';

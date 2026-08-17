@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 3
+names: ['alligator-crack', 'crack', 'pothole']
+
+roboflow:
+  workspace: weaam-richani
+  project: road-damage-detection-cfpsh
+  version: 2
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/weaam-richani/road-damage-detection-cfpsh/dataset/2

@@ -1,0 +1,16 @@
+RDD2022 Baseline Model — Training Results
+==========================================
+Dataset: 30,224 images (Czech, India, US, China Drone, China MotorBike, Japan)
+Model: YOLOv8m, 50 epochs, trained on Colab Pro (A100 GPU), 2.58 hours
+
+Overall:
+  mAP50:     0.674
+  mAP50-95:  0.353
+  Precision: 0.701
+  Recall:    0.601
+
+Per-class mAP50:
+  Longitudinal Crack: 0.721
+  Alligator Crack:    0.728
+  Transverse Crack:   0.683
+  Pothole:            0.563  (weakest — fewer examples, more visual variation)

@@ -11,6 +11,9 @@ webapp/node_modules/
 webapp/.next/
 webapp/package-lock.json
 
+# Training run artifacts (plots, logs, checkpoints — not source)
+runs/
+
 # Data (too large for GitHub)
 data/datasets/
 data/raw_uploads/
@@ -18,3 +21,6 @@ data/raw_uploads/
 # Secrets
 .env.local
 webapp/.env.local
+
+# Ultralytics auto-generated label caches (machine-specific, regenerated automatically)
+*.cache

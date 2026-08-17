@@ -1,0 +1,9 @@
+names:
+  0: Longitudinal Crack
+  1: Transverse Crack
+  2: Alligator Crack
+  3: Pothole
+nc: 4
+path: C:\Users\user\road-damage-lebanon\data\lebanon_photos
+train: images/train
+val: images/val
