@@ -25,3 +25,184 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Zefet: desktop workspace, mobile map and bottom sheet. */
+.zefet-app {
+  position: relative;
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  color: #1a1d23;
+  color-scheme: light;
+}
+.zefet-app button { cursor: pointer; }
+.zefet-app button:disabled { cursor: wait; }
+.zefet-app :is(button, input, textarea, a):focus-visible,
+.zefet-help button:focus-visible { outline: 3px solid #db7f2e; outline-offset: 3px; }
+.zefet-sidebar { width: 26rem; flex: 0 0 26rem; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.zefet-map { position: relative; flex: 1; min-width: 0; min-height: 0; isolation: isolate; }
+.zefet-report-content { display: flex; flex-direction: column; flex: 1; min-height: 12rem; }
+.zefet-priority-tabs { flex-shrink: 0; }
+.zefet-report-scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.zefet-report-dialog {
+  position: static;
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  flex-shrink: 0;
+  padding: 1.25rem;
+  border: 0;
+  border-bottom: 1px solid #e4e7eb;
+  background: white;
+  color: #1a1d23;
+}
+.zefet-report-dialog:not([open]) { display: none; }
+.zefet-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
+.zefet-dialog-heading h2 { font-size: .875rem; font-weight: 700; }
+.zefet-dialog-heading button { width: 44px; height: 44px; font-size: 1.5rem; border-radius: 50%; background: #f5f6f7; flex-shrink: 0; }
+.zefet-form-intro { display: none; }
+.zefet-field-label { display: block; font-size: .75rem; font-weight: 600; }
+.zefet-upload-form input { min-width: 0; }
+.zefet-form-error { border-radius: 8px; background: #fff1f0; color: #a32323; padding: 12px; font-size: .875rem; }
+.zefet-load-message { padding: 1rem; font-size: .875rem; color: #5b6470; }
+.zefet-load-message button { text-decoration: underline; font-weight: 600; min-height: 44px; }
+.zefet-mobile-header, .zefet-sheet-heading, .zefet-report-launch, .zefet-reopen-panel, .zefet-mobile-only { display: none; }
+.zefet-notice { position: absolute; z-index: 1100; top: 1rem; right: 1rem; max-width: min(26rem, calc(100% - 2rem)); display: flex; align-items: center; gap: 1rem; padding: .75rem 1rem; background: #fff; border: 1px solid #2e9e5b; border-radius: 12px; box-shadow: 0 4px 24px #0002; font-size: .875rem; }
+.zefet-notice button { min-width: 44px; min-height: 44px; font-size: 1.25rem; }
+.zefet-help { position: fixed; inset: 0; margin: auto; width: min(28rem, calc(100% - 2rem)); max-height: 85vh; max-height: 85dvh; overflow: hidden; padding: 0; border: 0; border-radius: 16px; color: #1a1d23; background: white; overscroll-behavior: contain; }
+.zefet-help[open] { display: flex; flex-direction: column; }
+.zefet-help-content { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.zefet-help-content:focus-visible { outline: 2px solid #db7f2e; outline-offset: -3px; }
+.zefet-help .zefet-dialog-heading { flex-shrink: 0; background: white; border-bottom: 1px solid #e4e7eb; padding: 1rem 1.25rem; margin: 0; }
+.zefet-help::backdrop, .zefet-report-dialog::backdrop { background: #11182780; }
+
+@media (max-width: 767px) {
+  .zefet-app { --header-height: calc(76px + env(safe-area-inset-top, 0px)); --sheet-height: calc(94px + env(safe-area-inset-bottom, 0px)); }
+  .zefet-app[data-sheet="hidden"] { --sheet-height: 0px; }
+  .zefet-app[data-sheet="half"] { --sheet-height: 44%; }
+  .zefet-app[data-sheet="full"] { --sheet-height: calc(100% - var(--header-height) - 100px); }
+  .zefet-mobile-only { display: inline-flex; align-items: center; justify-content: center; }
+  .zefet-desktop-header { display: none; }
+  .zefet-mobile-header { display: flex; position: absolute; inset: 0 0 auto; height: var(--header-height); padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); justify-content: space-between; align-items: center; background: white; border-bottom: 3px dashed #db7f2e; }
+  .zefet-mobile-header h1 { font-size: 28px; letter-spacing: .08em; line-height: 1.1; font-weight: 700; }
+  .zefet-mobile-header p { font-size: 11px; color: #5b6470; margin-top: 3px; }
+  .zefet-mobile-header button { width: 44px; height: 44px; border: 1px solid #e4e7eb; border-radius: 50%; }
+  .zefet-map { position: absolute; inset: var(--header-height) 0 var(--sheet-height); }
+  .zefet-sidebar { position: absolute; inset: auto 0 0; height: var(--sheet-height); width: 100%; border: 0; border-top: 1px solid #e4e7eb; border-radius: 20px 20px 0 0; z-index: 1050; overflow: hidden; box-shadow: 0 -4px 20px #1a1d2314; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .zefet-sheet-heading { display: flex; align-items: center; flex-shrink: 0; padding: 0 16px; gap: 8px; }
+  .zefet-sheet-toggle { flex: 1; min-width: 0; text-align: left; padding: 10px 0 12px; touch-action: none; }
+  .zefet-grip { display: block; width: 36px; height: 4px; margin: 0 auto 10px; border-radius: 4px; background: #c7ccd3; }
+  .zefet-sheet-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .zefet-sheet-summary strong { display: block; font-size: 15px; }
+  .zefet-sheet-summary small { display: block; font-size: 12px; color: #5b6470; margin-top: 3px; }
+  .zefet-sheet-size { flex: 0 0 auto; min-height: 44px; font-size: 12px; color: #814714; font-weight: 600; }
+  .zefet-report-content { min-height: 0; overflow: hidden; }
+  .zefet-app[data-sheet="hidden"] .zefet-report-content,
+  .zefet-app[data-sheet="peek"] .zefet-report-content {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 140ms ease, visibility 0s 140ms;
+  }
+  .zefet-priority-tabs button { min-height: 44px; font-size: 12px; gap: 4px; }
+  .zefet-report-scroll { -webkit-overflow-scrolling: touch; }
+  .zefet-report-list { background: #f5f6f7; }
+  .zefet-report-list.zefet-has-selection { display: none; }
+  .zefet-detail { border-top: 0; padding: 12px 16px 24px; }
+  .zefet-detail button { min-width: 44px; min-height: 44px; }
+  .zefet-back { color: #814714; font-weight: 600; font-size: 13px; margin-bottom: 8px; }
+  .zefet-report-launch { display: flex; position: absolute; z-index: 1040; bottom: calc(var(--sheet-height) + 30px); right: max(16px, env(safe-area-inset-right, 0px)); min-height: 48px; align-items: center; gap: 6px; padding: 0 16px; border-radius: 999px; border: 1px solid #ffffff55; color: white; background: #1a1d23; box-shadow: 0 4px 16px #0003; font-weight: 600; font-size: 14px; }
+  .zefet-report-launch span { font-size: 22px; }
+  .zefet-legend { display: none; } /* Priority labels remain in the sheet. */
+  .zefet-map .leaflet-control-zoom a { width: 40px; height: 40px; line-height: 40px; }
+  .zefet-map .leaflet-control-attribution { font-size: 9px; }
+  .zefet-map .leaflet-popup-content { max-width: 220px; }
+  .zefet-report-dialog { position: fixed; inset: 0; margin: auto; width: 100%; height: 100%; height: 100dvh; max-height: 100dvh; max-width: 100%; overflow-y: auto; overscroll-behavior: contain; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); border: 0; }
+  .zefet-report-dialog .zefet-dialog-heading { margin-bottom: 12px; }
+  .zefet-report-dialog .zefet-dialog-heading h2 { font-size: 20px; }
+  .zefet-form-intro { display: block; font-size: 14px; color: #5b6470; line-height: 1.6; margin-bottom: 24px; }
+  .zefet-field-label { font-size: 14px; margin-top: 18px; }
+  .zefet-upload-form :is(input, textarea) { font-size: 16px; max-width: 100%; } /* Prevent iOS input zoom. */
+  .zefet-upload-form input[type="file"] { font-size: 14px; }
+  .zefet-upload-form textarea { height: 100px; }
+  .zefet-upload-form button { min-height: 44px; }
+  .zefet-upload-form button[type="submit"] { min-height: 52px; margin-top: 16px; }
+  .zefet-notice { top: calc(var(--header-height) + 10px); left: 12px; right: 12px; max-width: none; }
+}
+@media (max-width: 767px) and (max-height: 500px) {
+  .zefet-app { --header-height: 60px; }
+  .zefet-app[data-sheet="half"] { --sheet-height: 50%; }
+  .zefet-sheet-toggle { padding-top: 6px; padding-bottom: 6px; }
+  .zefet-grip { margin-bottom: 4px; }
+}
+
+/* Shared timing keeps the sheet, map viewport and report action moving together. */
+@media (max-width: 767px) {
+  .zefet-app { --sheet-duration: 420ms; --sheet-easing: cubic-bezier(.22, 1, .36, 1); }
+  .zefet-sidebar { transition: height var(--sheet-duration) var(--sheet-easing); }
+  .zefet-map, .zefet-report-launch { transition: bottom var(--sheet-duration) var(--sheet-easing); }
+  .zefet-report-content { opacity: 1; visibility: visible; transition: opacity 220ms ease 80ms, visibility 0s; }
+  .zefet-sheet-orbit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: #a45a1c;
+    background: #fff5e9;
+    border: 1px solid #edc9a4;
+    box-shadow: 0 2px 6px #db7f2e0d;
+    transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .zefet-sheet-chevron { transition: transform var(--sheet-duration) var(--sheet-easing); }
+  .zefet-sheet-orbit[data-expanded="true"] { background: #1a1d23; color: #fff; border-color: #1a1d23; }
+  .zefet-sheet-toggle:focus-visible .zefet-sheet-orbit { box-shadow: 0 0 0 4px #db7f2e26; }
+}
+@media (max-width: 767px) and (hover: hover) {
+  .zefet-sheet-toggle:hover .zefet-sheet-orbit { border-color: #db7f2e; box-shadow: 0 0 0 4px #db7f2e1a; }
+}
+/* Separate the peek/open control from fully hiding the panel. */
+@media (max-width: 767px) {
+  .zefet-sheet-heading { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; padding: 22px 16px 12px; }
+  .zefet-sheet-toggle { padding: 0; min-height: 44px; }
+  .zefet-grip { position: absolute; top: 9px; left: 50%; transform: translateX(-50%); margin: 0; }
+  .zefet-sheet-orbit { width: 44px; height: 44px; flex-basis: 44px; }
+  .zefet-sheet-chevron { transform-origin: center; }
+  .zefet-sheet-summary > span:first-child { min-width: 0; }
+  .zefet-sheet-summary small { font-size: 11px; }
+  .zefet-sheet-close {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; border: 1px solid #d6dae0; border-radius: 12px;
+    color: #475569; background: #fff;
+    transition: color 180ms ease, background 180ms ease, border-color 180ms ease;
+  }
+  .zefet-sheet-close:hover { color: #b42318; border-color: #f5c0bb; background: #fff4f2; }
+  .zefet-sheet-size {
+    grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 44px; padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 10px;
+    background: #f1f5f9; color: #334155; font-size: 12px; font-weight: 600;
+    box-shadow: 0 1px 2px #0f172a08;
+    transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+  .zefet-sheet-size:hover { background: #e2e8f0; border-color: #94a3b8; box-shadow: 0 2px 5px #0f172a0d; }
+  .zefet-sheet-size:active { background: #cbd5e1; }
+  .zefet-app[data-sheet="hidden"] .zefet-sidebar { padding-bottom: 0; border-top: 0; box-shadow: none; }
+  .zefet-app[data-sheet="hidden"] .zefet-sheet-heading { visibility: hidden; pointer-events: none; }
+  .zefet-reopen-panel {
+    display: inline-flex; align-items: center; gap: 7px; position: absolute; z-index: 1040;
+    left: max(12px, env(safe-area-inset-left, 0px)); bottom: max(30px, env(safe-area-inset-bottom, 0px));
+    min-height: 48px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 999px;
+    background: #fff; color: #334155; box-shadow: 0 4px 16px #0002; font-size: 12px; font-weight: 600;
+  }
+  .zefet-app[data-sheet="hidden"] .zefet-report-launch { right: 12px; padding: 0 12px; font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zefet-sidebar, .zefet-map, .zefet-report-launch,
+  .zefet-report-content, .zefet-app[data-sheet="peek"] .zefet-report-content,
+  .zefet-sheet-chevron, .zefet-sheet-orbit, .zefet-sheet-size, .zefet-sheet-close,
+  .zefet-app[data-sheet="hidden"] .zefet-report-content { transition: none; }
+}

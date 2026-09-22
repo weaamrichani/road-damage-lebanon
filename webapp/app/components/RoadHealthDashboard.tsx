@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Popup, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Popup, CircleMarker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
 interface DamageBreakdownItem {
@@ -63,31 +63,79 @@ const FAQ_ITEMS = [
   },
 ];
 
+// Resize Leaflet when the sheet, viewport or desktop sidebar changes size.
+function MapLayout({ selected, sheetSize, reports }: { selected: RoadSegment | null; sheetSize: string; reports: RoadSegment[] }) {
+  const map = useMap();
+  const fitted = useRef(false);
+  useEffect(() => {
+    if (fitted.current || !reports.length) return;
+    const points = reports.filter((r) => r.latitude != null && r.longitude != null)
+      .map((r): [number, number] => [r.latitude!, r.longitude!]);
+    if (points.length) {
+      if (window.matchMedia('(max-width: 767px)').matches && !selected) {
+        map.fitBounds(points, { padding: [32, 32], maxZoom: 10, animate: false });
+      }
+      fitted.current = true;
+    }
+  }, [map, reports, selected]);
+  useEffect(() => {
+    const observer = new ResizeObserver(() => map.invalidateSize({ pan: true, animate: false, debounceMoveend: true }));
+    observer.observe(map.getContainer());
+    return () => observer.disconnect();
+  }, [map]);
+  useEffect(() => {
+    if (selected?.latitude != null && selected.longitude != null) {
+      // Wait for the sheet's new layout before centering the visible map.
+      const frame = requestAnimationFrame(() => {
+        map.invalidateSize({ pan: true, animate: false });
+        map.setView([selected.latitude!, selected.longitude!], Math.max(map.getZoom(), 14), { animate: false });
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [map, selected, sheetSize]);
+  return null;
+}
+
+function containDialogFocus(event: React.KeyboardEvent<HTMLDialogElement>) {
+  if (event.key !== 'Tab' || !event.currentTarget.matches(':modal')) return;
+  const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+    'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])'
+  )).filter((element) => !element.matches(':disabled') && element.getClientRects().length > 0);
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (!first) { event.preventDefault(); return; }
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault(); last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault(); first.focus();
+  }
+}
+
 function FaqModal({ onClose }: { onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { dialog.current?.showModal(); }, []);
   return (
-    <div className="fixed inset-0 z-2000 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E4E7EB] sticky top-0 bg-white">
-          <h2 className="text-base font-semibold text-[#1A1D23]">Help &amp; safety</h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="text-[#5B6470] hover:text-[#1A1D23] text-xl leading-none w-7 h-7 flex items-center justify-center rounded hover:bg-[#F5F6F7]"
-          >
-            ×
-          </button>
-        </div>
-        <div className="p-5 space-y-5">
-          {FAQ_ITEMS.map((item, i) => (
-            <div key={i}>
-              <p className="text-sm font-semibold text-[#1A1D23] mb-1">{item.q}</p>
-              <p className="text-sm text-[#5B6470] leading-relaxed">{item.a}</p>
-            </div>
-          ))}
-        </div>
+    <dialog ref={dialog} onKeyDown={containDialogFocus} className="zefet-help" aria-labelledby="help-title" onCancel={onClose} onClose={onClose}>
+      <div className="zefet-dialog-heading">
+        <h2 id="help-title">Help &amp; safety</h2>
+        <button onClick={onClose} aria-label="Close help">×</button>
       </div>
-    </div>
+      <div className="zefet-help-content p-5 space-y-5" tabIndex={0} role="region" aria-label="Frequently asked questions">
+        {FAQ_ITEMS.map((item) => (
+          <div key={item.q}>
+            <p className="text-sm font-semibold text-[#1A1D23] mb-1">{item.q}</p>
+            <p className="text-sm text-[#5B6470] leading-relaxed">{item.a}</p>
+          </div>
+        ))}
+      </div>
+    </dialog>
   );
+}
+
+async function readReports(): Promise<RoadSegment[]> {
+  const response = await fetch('/api/segments');
+  if (!response.ok) throw new Error('Could not load reports');
+  return response.json();
 }
 
 export default function RoadHealthDashboard() {
@@ -101,25 +149,80 @@ export default function RoadHealthDashboard() {
   const [activeTab, setActiveTab] = useState<'urgent' | 'high' | 'monitor'>('urgent');
   const [showFaq, setShowFaq] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [sheetSize, setSheetSize] = useState<'hidden' | 'peek' | 'half' | 'full'>('peek');
+  const [showReport, setShowReport] = useState(false);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [formError, setFormError] = useState('');
+  const [notice, setNotice] = useState('');
+  const reportDialog = useRef<HTMLDialogElement>(null);
+  const sheetScroll = useRef<HTMLDivElement>(null);
+  const swipeStart = useRef<number | null>(null);
+  const suppressClick = useRef(false);
+  const panelToggleRef = useRef<HTMLButtonElement>(null);
+  const reopenPanelRef = useRef<HTMLButtonElement>(null);
+  const panelIsOpen = sheetSize === 'half' || sheetSize === 'full';
+
+  const hidePanel = () => {
+    setSheetSize('hidden');
+    requestAnimationFrame(() => reopenPanelRef.current?.focus({ preventScroll: true }));
+  };
+  const restorePanel = () => {
+    setSheetSize('peek');
+    requestAnimationFrame(() => panelToggleRef.current?.focus({ preventScroll: true }));
+  };
+
+  // One mounted form: closing the mobile dialog keeps the photo and notes.
+  // On desktop the same dialog is non-modal and lives in the sidebar.
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const syncDialog = () => {
+      const dialog = reportDialog.current;
+      if (!dialog) return;
+      if (dialog.open) dialog.close();
+      if (media.matches) {
+        if (showReport) dialog.showModal();
+      } else {
+        dialog.show();
+      }
+    };
+    syncDialog();
+    media.addEventListener('change', syncDialog);
+    return () => media.removeEventListener('change', syncDialog);
+  }, [showReport]);
+
+  const selectReport = (segment: RoadSegment, panelSize: 'half' | 'full' = 'half') => {
+    setSelectedSegment(segment);
+    setSheetSize(panelSize);
+    requestAnimationFrame(() => {
+      sheetScroll.current?.scrollTo({ top: 0 });
+      if (window.matchMedia('(max-width: 767px)').matches) {
+        document.getElementById('report-detail-title')?.focus({ preventScroll: true });
+      }
+    });
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
+  const fetchSegments = async () => {
+    try {
+      setSegments(await readReports());
+      setLoadState('ready');
+    } catch {
+      setLoadState('error');
+    }
+  };
+
   useEffect(() => {
-    const fetchSegments = async () => {
-      try {
-        const response = await fetch('/api/segments');
-        if (!response.ok) return;
-        const data = await response.json();
-        setSegments(data);
-      } catch (error) {
-        console.error('Failed to fetch segments:', error);
-      }
-    };
-    fetchSegments();
+    let active = true;
+    readReports().then((reports) => {
+      if (active) { setSegments(reports); setLoadState('ready'); }
+    }).catch(() => { if (active) setLoadState('error'); });
+    return () => { active = false; };
   }, []);
 
   const getUserLocation = () => {
     if ('geolocation' in navigator) {
+      setFormError('');
       setIsLocating(true);
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -128,10 +231,13 @@ export default function RoadHealthDashboard() {
           setIsLocating(false);
         },
         () => {
-          alert('Could not get your location. Check location permissions and try again.');
+          setFormError('Could not get your location. Check permissions or enter coordinates manually.');
           setIsLocating(false);
-        }
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
       );
+    } else {
+      setFormError('Location is unavailable in this browser. Enter coordinates manually.');
     }
   };
 
@@ -154,9 +260,9 @@ export default function RoadHealthDashboard() {
 
   const getActiveLocation = (): [number, number] | null => {
     if (useManualLocation) {
-      const lat = parseFloat(manualLat);
-      const lon = parseFloat(manualLon);
-      if (!isNaN(lat) && !isNaN(lon)) return [lat, lon];
+      const lat = Number(manualLat);
+      const lon = Number(manualLon);
+      if (manualLat.trim() && manualLon.trim() && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return [lat, lon];
       return null;
     }
     return userLocation;
@@ -164,9 +270,12 @@ export default function RoadHealthDashboard() {
 
   const handlePhotoUpload = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isUploading) return;
+    setFormError('');
+    setNotice('');
     const location = getActiveLocation();
     if (!location) {
-      alert('Set a location first — either "Use my location" or enter coordinates manually.');
+      setFormError('Set a valid location first — use your location or enter latitude (−90 to 90) and longitude (−180 to 180).');
       return;
     }
     setIsUploading(true);
@@ -177,38 +286,44 @@ export default function RoadHealthDashboard() {
       const response = await fetch('/api/upload', { method: 'POST', body: formData });
       const result = await response.json();
       if (response.ok) {
-        alert(`Uploaded. Detected ${result.detections?.length ?? 0} damage instance(s).`);
+        setNotice(`Report uploaded. Detected ${result.detections?.length ?? 0} damage instance(s).`);
+        setShowReport(false);
+        setSheetSize('half');
         formRef.current?.reset();
         setManualLat('');
         setManualLon('');
-        const refreshed = await fetch('/api/segments');
-        if (refreshed.ok) setSegments(await refreshed.json());
+        await fetchSegments();
       } else {
-        alert(`Upload failed: ${result.message ?? 'Unknown error'}`);
+        setFormError(`Upload failed: ${result.message ?? result.error ?? 'Please try again.'}`);
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Error uploading photo.');
+      setFormError('Could not upload the photo. Check your connection and try again.');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const urgentSegments = segments.filter((s) => s.priority_tier === 1).slice(0, 5);
-  const highSegments = segments.filter((s) => s.priority_tier === 2).slice(0, 5);
-  const monitorSegments = segments.filter((s) => s.priority_tier === 3).slice(0, 5);
+  const urgentSegments = segments.filter((s) => s.priority_tier === 1);
+  const highSegments = segments.filter((s) => s.priority_tier === 2);
+  const monitorSegments = segments.filter((s) => s.priority_tier === 3);
   const displayedSegments =
     activeTab === 'urgent' ? urgentSegments : activeTab === 'high' ? highSegments : monitorSegments;
-  const activeLocation = getActiveLocation();
+
 
   return (
-    <div className="flex h-screen bg-[#F5F6F7] font-sans">
+    <div className="zefet-app bg-[#F5F6F7] font-sans" data-sheet={sheetSize}>
+      <header className="zefet-mobile-header">
+        <div><h1 className="font-rubik-vinyl">Zefet.</h1><p>Safer roads, one report at a time.</p></div>
+        <button onClick={() => setShowFaq(true)} aria-label="Help and safety information">?</button>
+      </header>
+      {notice && <div className="zefet-notice" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss notification">×</button></div>}
       {showFaq && <FaqModal onClose={() => setShowFaq(false)} />}
 
       {/* ── LEFT SIDEBAR ── */}
-      <div className="w-104 bg-white shadow-sm overflow-y-auto flex flex-col border-r border-[#E4E7EB]">
+      <aside className="zefet-sidebar bg-white shadow-sm border-r border-[#E4E7EB]" aria-label="Road damage reports">
         {/* Header with road-marking signature stripe */}
-        <div className="px-6 pt-5 pb-4">
+        <div className="zefet-desktop-header px-6 pt-5 pb-4">
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-4xl font-bold font-rubik-vinyl text-[#1A1D23] tracking-widest">Zefet.</h1>
@@ -228,7 +343,7 @@ export default function RoadHealthDashboard() {
         </div>
         {/* road-marking dashed divider */}
         <div
-          className="h-0.75 w-full"
+          className="zefet-desktop-header h-0.75 w-full shrink-0"
           style={{
             backgroundImage:
               'repeating-linear-gradient(90deg, #DB7F2E 0px, #DB7F2E 14px, transparent 14px, transparent 24px)',
@@ -236,10 +351,18 @@ export default function RoadHealthDashboard() {
         />
 
         {/* Upload card */}
-        <div className="p-5 border-b border-[#E4E7EB]">
-          <p className="font-semibold text-sm text-[#1A1D23] mb-3">Report road damage</p>
-          <form ref={formRef} onSubmit={handlePhotoUpload} className="space-y-2.5">
+        <dialog ref={reportDialog} onKeyDown={containDialogFocus} className="zefet-report-dialog" aria-labelledby="report-title"
+          onCancel={(event) => { event.preventDefault(); setShowReport(false); }}>
+          <div className="zefet-dialog-heading">
+            <h2 id="report-title">Report road damage</h2>
+            <button type="button" className="zefet-mobile-only" onClick={() => setShowReport(false)} aria-label="Close report form">×</button>
+          </div>
+          <p className="zefet-form-intro">Add a clear photo and the damage location. We’ll analyse it and prioritise the repair.</p>
+          <form ref={formRef} onSubmit={handlePhotoUpload} className="space-y-2.5 zefet-upload-form" aria-busy={isUploading}>
+            <fieldset disabled={isUploading} className="space-y-2.5">
+            <label htmlFor="damage-photo" className="zefet-field-label">Road photo</label>
             <input
+              id="damage-photo"
               ref={fileInputRef}
               type="file"
               name="photo"
@@ -247,7 +370,9 @@ export default function RoadHealthDashboard() {
               required
               className="w-full text-xs text-[#1A1D23] border border-[#D6DAE0] rounded-md px-3 py-2 bg-white file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:bg-[#F5F6F7] file:text-xs file:font-medium file:text-[#1A1D23] file:cursor-pointer"
             />
+            <label htmlFor="damage-notes" className="zefet-field-label">Notes (optional)</label>
             <textarea
+              id="damage-notes"
               name="notes"
               placeholder="Notes (optional)"
               className="w-full text-sm text-[#1A1D23] placeholder-[#8A93A0] border border-[#D6DAE0] rounded-md px-3 py-2 h-16 resize-none focus:outline-none focus:ring-2 focus:ring-[#DB7F2E]/40 focus:border-[#DB7F2E]"
@@ -306,6 +431,8 @@ export default function RoadHealthDashboard() {
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
+                    aria-label="Latitude"
+                    inputMode="decimal"
                     placeholder="Latitude"
                     value={manualLat}
                     onChange={(e) => setManualLat(e.target.value)}
@@ -314,6 +441,8 @@ export default function RoadHealthDashboard() {
 
                   <input
                     type="text"
+                    aria-label="Longitude"
+                    inputMode="decimal"
                     placeholder="Longitude"
                     value={manualLon}
                     onChange={(e) => setManualLon(e.target.value)}
@@ -359,13 +488,51 @@ export default function RoadHealthDashboard() {
               )}
               {isUploading ? 'Uploading… this may take a few minutes' : 'Upload photo'}
             </button>
+            </fieldset>
+            {formError && <p className="zefet-form-error" role="alert">{formError}</p>}
           </form>
-        </div>
+        </dialog>
 
-        {/* Priority tabs */}
-        <div className="flex border-b border-[#E4E7EB] text-sm font-medium">
+        <div className="zefet-sheet-heading">
+          <button ref={panelToggleRef} className="zefet-sheet-toggle" aria-expanded={panelIsOpen} aria-controls="report-content"
+            aria-label={panelIsOpen ? 'Collapse reports to peek' : 'Open reports panel'}
+            onPointerDown={(e) => { swipeStart.current = e.clientY; suppressClick.current = false; e.currentTarget.setPointerCapture(e.pointerId); }}
+            onPointerUp={(e) => {
+              if (swipeStart.current !== null && Math.abs(e.clientY - swipeStart.current) > 35) {
+                const up = e.clientY < swipeStart.current;
+                setSheetSize(up ? (sheetSize === 'peek' ? 'half' : 'full') : (sheetSize === 'full' ? 'half' : 'peek'));
+                suppressClick.current = true;
+              }
+              swipeStart.current = null;
+            }}
+            onPointerCancel={() => { swipeStart.current = null; }}
+            onClick={() => { if (!suppressClick.current) setSheetSize(sheetSize === 'peek' ? 'half' : 'peek'); suppressClick.current = false; }}>
+            <span className="zefet-grip" aria-hidden="true" />
+            <span className="zefet-sheet-summary"><span><strong>{loadState === 'loading' ? 'Loading reports…' : `${segments.length} road reports`}</strong><small>{urgentSegments.length} urgent · {highSegments.length} high · {monitorSegments.length} monitor</small></span><span className="zefet-sheet-orbit" data-expanded={panelIsOpen} aria-hidden="true">
+              <svg className="zefet-sheet-chevron" style={{ transform: panelIsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} width="20" height="20" viewBox="0 0 24 24" fill="none" focusable="false">
+                <path d="m7 14 5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span></span>
+            <span className="sr-only">{sheetSize === 'peek' ? 'Expand reports' : 'Collapse reports'}</span>
+          </button>
+          <button className="zefet-sheet-close" onClick={hidePanel} aria-label="Hide reports panel" title="Hide reports panel">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+              <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+          {panelIsOpen && <button className="zefet-sheet-size" aria-controls="report-content" onClick={() => setSheetSize(sheetSize === 'full' ? 'half' : 'full')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+              <path d={sheetSize === 'full' ? 'M8 3v5H3m13-5v5h5M8 21v-5H3m13 5v-5h5' : 'M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {sheetSize === 'full' ? 'Show more map' : 'Expand panel'}
+          </button>}
+        </div>
+        <div id="report-content" className="zefet-report-content">
+        {/* Priority filters */}
+        <div className="zefet-priority-tabs flex border-b border-[#E4E7EB] text-sm font-medium" role="group" aria-label="Filter by priority">
           <button
-            onClick={() => setActiveTab('urgent')}
+            aria-pressed={activeTab === 'urgent'}
+            onClick={() => { setActiveTab('urgent'); setSelectedSegment(null); }}
             className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition-colors ${
               activeTab === 'urgent'
                 ? 'border-b-2 border-[#D64545] text-[#D64545]'
@@ -376,7 +543,8 @@ export default function RoadHealthDashboard() {
             Urgent ({urgentSegments.length})
           </button>
           <button
-            onClick={() => setActiveTab('high')}
+            aria-pressed={activeTab === 'high'}
+            onClick={() => { setActiveTab('high'); setSelectedSegment(null); }}
             className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition-colors ${
               activeTab === 'high'
                 ? 'border-b-2 border-[#DB7F2E] text-[#DB7F2E]'
@@ -387,7 +555,8 @@ export default function RoadHealthDashboard() {
             High ({highSegments.length})
           </button>
           <button
-            onClick={() => setActiveTab('monitor')}
+            aria-pressed={activeTab === 'monitor'}
+            onClick={() => { setActiveTab('monitor'); setSelectedSegment(null); }}
             className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition-colors ${
               activeTab === 'monitor'
                 ? 'border-b-2 border-[#2E9E5B] text-[#2E9E5B]'
@@ -399,17 +568,22 @@ export default function RoadHealthDashboard() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
-          {displayedSegments.length === 0 ? (
+        <div ref={sheetScroll} className="zefet-report-scroll">
+        <div className={`zefet-report-list p-4 space-y-2.5 ${selectedSegment ? 'zefet-has-selection' : ''}`}>
+          {loadState === 'loading' && <p role="status" className="zefet-load-message">Loading road reports…</p>}
+          {loadState === 'error' && <div role="alert" className="zefet-load-message">Could not refresh reports. <button onClick={() => { setLoadState('loading'); void fetchSegments(); }}>Try again</button></div>}
+          {loadState === 'ready' && displayedSegments.length === 0 ? (
             <p className="text-sm text-[#8A93A0] text-center mt-8">
-              No reports yet — upload a photo to populate the map.
+              No {activeTab} reports yet.
             </p>
           ) : (
             displayedSegments.map((seg) => (
-              <div
+              <button
+                type="button"
                 key={seg.id}
-                onClick={() => setSelectedSegment(seg)}
-                className={`cursor-pointer border-l-[3px] ${TIER_BORDER[seg.priority_tier]} rounded-md bg-white shadow-sm p-3.5 hover:shadow-md transition-shadow ${
+                onClick={() => selectReport(seg)}
+                aria-pressed={selectedSegment?.id === seg.id}
+                className={`w-full text-left cursor-pointer border-l-[3px] ${TIER_BORDER[seg.priority_tier]} rounded-md bg-white shadow-sm p-3.5 hover:shadow-md transition-shadow ${
                   selectedSegment?.id === seg.id ? 'ring-2 ring-[#DB7F2E]/30' : ''
                 }`}
               >
@@ -425,16 +599,17 @@ export default function RoadHealthDashboard() {
                 <p className="text-xs text-[#5B6470] mt-1">
                   {seg.damage_count} damage{seg.damage_count === 1 ? '' : 's'} detected
                 </p>
-              </div>
+              </button>
             ))
           )}
         </div>
 
         {/* Detail panel */}
         {selectedSegment && (
-          <div className="border-t border-[#E4E7EB] p-5 bg-white">
+          <div className="zefet-detail border-t border-[#E4E7EB] p-5 bg-white">
+            <button className="zefet-back zefet-mobile-only" onClick={() => setSelectedSegment(null)}>← All reports</button>
             <div className="flex justify-between items-start mb-2">
-              <p className="font-bold text-sm text-[#1A1D23] w-64 leading-tight">{selectedSegment.name}</p>
+              <h2 id="report-detail-title" tabIndex={-1} className="font-bold text-sm text-[#1A1D23] min-w-0 flex-1 leading-tight">{selectedSegment.name}</h2>
               <button
                 onClick={() => setSelectedSegment(null)}
                 className="text-[#8A93A0] hover:text-[#1A1D23] text-lg leading-none"
@@ -507,21 +682,33 @@ export default function RoadHealthDashboard() {
             )}
           </div>
         )}
-      </div>
+        </div>
+        </div>
+      </aside>
+      {sheetSize === 'hidden' && <button ref={reopenPanelRef} className="zefet-reopen-panel" onClick={restorePanel} aria-controls="report-content" aria-expanded={false}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+          <path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+        Show reports
+      </button>}
+      <button className="zefet-report-launch" onClick={() => { setNotice(''); setShowReport(true); }}>
+        <span aria-hidden="true">+</span> {isUploading ? 'Uploading report…' : 'Report damage'}
+      </button>
 
       {/* ── MAP ── */}
-      <div className="flex-1 relative">
+      <div className="zefet-map" aria-label="Road damage map">
         <MapContainer
           center={[33.8547, 35.8623]}
           zoom={10}
           style={{ height: '100%', width: '100%' }}
         >
+          <MapLayout selected={selectedSegment} sheetSize={sheetSize} reports={segments} />
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
           {segments
-            .filter((s) => s.latitude && s.longitude)
+            .filter((s) => s.latitude != null && s.longitude != null)
             .map((segment) => (
               <CircleMarker
                 key={segment.id}
@@ -533,7 +720,7 @@ export default function RoadHealthDashboard() {
                   weight: 2,
                   fillOpacity: 0.9,
                 }}
-                eventHandlers={{ click: () => setSelectedSegment(segment) }}
+                eventHandlers={{ click: () => selectReport(segment, 'full') }}
               >
                 <Popup>
                   <div className="text-sm">
@@ -549,7 +736,7 @@ export default function RoadHealthDashboard() {
             ))}
         </MapContainer>
 
-        <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-1000 border border-[#E4E7EB]">
+        <div className="zefet-legend absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-1000 border border-[#E4E7EB]">
           <p className="font-semibold text-xs text-[#1A1D23] mb-2">Priority</p>
           <div className="space-y-1.5 text-xs">
             {([1, 2, 3] as const).map((tier) => (
